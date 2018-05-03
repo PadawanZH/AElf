@@ -23,12 +23,6 @@ namespace AElf.Kernel
             throw new NotImplementedException();
         }
 
-        public string MethodName { get; set; }
-        public object[] Params { get; set; }
-        public IAccount From { get; set; }
-        public IAccount To { get; set; }
-        public ulong IncrementId { get; set; }
-
         public Hash LastBlockHashWhenCreating()
         {
             throw new NotImplementedException();

@@ -3,7 +3,7 @@ using System;
 
 namespace AElf.Kernel
 {
-    public class Block
+    public partial class Block : IBlock
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="T:AElf.Kernel.Block"/> class.
@@ -25,13 +25,13 @@ namespace AElf.Kernel
         {
             if (!Body.AddTransaction(tx)) 
                 return false;
-            Header.AddTransaction(tx);
             return true;
         }
 
-        public BlockHeader Header { get; set; }
-        public BlockBody Body { get; set; }
-
+        public void FillTxsMerkleTreeRootInHeader()
+        {
+            Header.MerkleTreeRootOfTransactions = Body.CalculateMerkleTreeRoot();
+        }
 
         /// <summary>
         /// Returns the block hash.
@@ -39,7 +39,7 @@ namespace AElf.Kernel
         /// <returns>The hash.</returns>
         public Hash GetHash()
         {
-            return new Hash(this.CalculateHash());
+            return Header.Hash;
         }
     }
 }
