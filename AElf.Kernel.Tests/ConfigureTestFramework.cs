@@ -1,4 +1,6 @@
-﻿using Autofac;
+﻿using AElf.Database.Config;
+using AElf.Kernel.Modules.AutofacModule;
+using Autofac;
 using Xunit;
 using Xunit.Abstractions;
 using Xunit.Frameworks.Autofac;
@@ -16,7 +18,9 @@ namespace AElf.Kernel.Tests
 
         protected override void ConfigureContainer(ContainerBuilder builder)
         {
-            builder.RegisterAssemblyModules(typeof(AElf.Kernel.Modules.AutofacModule.Module).Assembly);
+            builder.RegisterModule(new MainModule());
+            builder.RegisterModule(new LoggerModule());
+            builder.RegisterModule(new DatabaseModule(new DatabaseConfig()));
 
             // configure your container
             // e.g. builder.RegisterModule<TestOverrideModule>();

@@ -1,4 +1,5 @@
 ﻿using System.Threading.Tasks;
+using AElf.Kernel.Managers;
 using Xunit;
 using Xunit.Frameworks.Autofac;
 
@@ -17,7 +18,11 @@ namespace AElf.Kernel.Tests
         [Fact]
         public async Task TestInsert()
         {
-            await _manager.AddTransactionAsync(new Transaction());
+            await _manager.AddTransactionAsync(new Transaction
+            {
+                From = Hash.Generate(),
+                To = Hash.Generate()
+            });
         }
     }
 }

@@ -1,17 +1,14 @@
+using System;
+using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
+using AElf.Kernel.SmartContracts.CSharpSmartContract;
+using Google.Protobuf.WellKnownTypes;
 
 namespace AElf.Kernel.KernelAccount
 {
     public interface ISmartContractRunner
     {
-        Task<ISmartContract> RunAsync(SmartContractRegistration reg);
-    }
-    
-    public class KernelZeroSmartContractRunner: ISmartContractRunner
-    {
-        public async Task<ISmartContract> RunAsync(SmartContractRegistration reg)
-        {
-            throw new System.NotImplementedException();
-        }
+        Task<IExecutive> RunAsync(SmartContractRegistration reg);
     }
 }

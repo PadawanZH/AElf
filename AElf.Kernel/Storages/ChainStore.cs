@@ -1,4 +1,5 @@
 ﻿using System.Threading.Tasks;
+using AElf.Database;
 
 namespace AElf.Kernel.Storages
 {
@@ -11,21 +12,22 @@ namespace AElf.Kernel.Storages
             _keyValueDatabase = keyValueDatabase;
         }
     
-        public async Task<Chain> GetAsync(Hash id)
+        public async Task<IChain> GetAsync(Hash id)
         {
-            return (Chain) await _keyValueDatabase.GetAsync(id,typeof(Chain));
+            var chainBytes = await _keyValueDatabase.GetAsync(id.Value.ToBase64(), typeof(Chain));
+            return chainBytes == null ? null : Chain.Parser.ParseFrom(chainBytes);
         }
 
-        public async Task<Chain> UpdateAsync(Chain chain)
+        public async Task<IChain> UpdateAsync(IChain chain)
         {
-            // TODO: So slow, need to find a way to speed up.
-            await _keyValueDatabase.SetAsync(chain.Id, chain);
+            var bytes = chain.Serialize();
+            await _keyValueDatabase.SetAsync(chain.Id.Value.ToBase64(), bytes);
             return chain;
         }
 
-        public async Task<Chain> InsertAsync(Chain chain)
+        public async Task<IChain> InsertAsync(IChain chain)
         {
-            await _keyValueDatabase.SetAsync(chain.Id, chain);
+            await _keyValueDatabase.SetAsync(chain.Id.Value.ToBase64(), chain.Serialize());
             return chain;
         }
     }

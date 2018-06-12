@@ -1,4 +1,5 @@
 ﻿using System.Threading.Tasks;
+using AElf.Database;
 
 namespace AElf.Kernel.Storages
 {
@@ -11,14 +12,15 @@ namespace AElf.Kernel.Storages
             _keyValueDatabase = keyValueDatabase;
         }
 
-        public async Task InsertAsync(Hash txsMerkleTreeRoot, BlockBody body)
+        public async Task InsertAsync(Hash txsMerkleTreeRoot, IBlockBody body)
         {
-            await _keyValueDatabase.SetAsync(txsMerkleTreeRoot, body);
+            await _keyValueDatabase.SetAsync(txsMerkleTreeRoot.Value.ToBase64(), body.Serialize());
         }
 
         public async Task<BlockBody> GetAsync(Hash blockHash)
         {
-            return (BlockBody) await _keyValueDatabase.GetAsync(blockHash, typeof(BlockBody));
+            var blockBody =  await _keyValueDatabase.GetAsync(blockHash.Value.ToBase64(), typeof(BlockBody));
+            return BlockBody.Parser.ParseFrom(blockBody);
         }
     }
 }
