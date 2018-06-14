@@ -1,30 +1,31 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using AElf.Kernel.Storages;
 using Google.Protobuf;
 using NLog;
 using Org.BouncyCastle.Security;
+using QuickGraph;
 
 namespace AElf.Kernel.Concurrency.Metadata
 {
-    public class ChainFunctionMetadataService : IChainFunctionMetadataService
+    public class ChainFunctionMetadata : IChainFunctionMetadata
     {
-        private readonly IChainFunctionMetadataTemplateService _templateService;
+        private readonly IChainFunctionMetadataTemplate _template;
         private readonly ILogger _logger;
         private readonly IDataStore _dataStore;
-        private readonly Hash _chainId;
+        private Hash ChainId => _template.ChainId;
         
         public Dictionary<string, FunctionMetadata> FunctionMetadataMap { get; }
         
-        public ChainFunctionMetadataService(IChainFunctionMetadataTemplateService templateService, IDataStore dataStore, Hash chainId, ILogger logger = null)
+        public ChainFunctionMetadata(IChainFunctionMetadataTemplate template, IDataStore dataStore,  ILogger logger = null)
         {
-            _templateService = templateService;
+            _template = template;
             _dataStore = dataStore;
-            _chainId = chainId;
             _logger = logger;
 
-            var mapCache = _dataStore.GetDataAsync(Path.CalculatePointerForMetadata(_chainId)).Result;
+            var mapCache = _dataStore.GetDataAsync(Path.CalculatePointerForMetadata(ChainId)).Result;
             if (mapCache != null)
             {
                 FunctionMetadataMap = RestoreFunctionMetadata(SerializeFunctionMetadataMap.Parser.ParseFrom(mapCache));
@@ -47,13 +48,13 @@ namespace AElf.Kernel.Concurrency.Metadata
             Dictionary<string, FunctionMetadata> tempMap = new Dictionary<string, FunctionMetadata>();
             try
             {
-                if (!_templateService.ContractMetadataTemplateMap.TryGetValue(contractClassName, out var classTemplate))
+                if (!_template.ContractMetadataTemplateMap.TryGetValue(contractClassName, out var classTemplate))
                 {
                     throw new FunctionMetadataException("Cannot find contract named " + contractClassName + " in the template storage");
                 }
 
-                //local calling graph in template map of templateService must be topological, so ignore the callGraph
-                _templateService.TryGetLocalCallingGraph(classTemplate, out var callGraph, out var topologicRes);
+                //local calling graph in template map of template must be topological, so ignore the callGraph
+                _template.TryGetLocalCallingGraph(classTemplate, out var callGraph, out var topologicRes);
 
                 foreach (var localFuncName in topologicRes.Reverse())
                 {
@@ -70,7 +71,7 @@ namespace AElf.Kernel.Concurrency.Metadata
                     FunctionMetadataMap.Add(functionMetadata.Key, functionMetadata.Value);
                 }
 
-                _dataStore.SetDataAsync(Path.CalculatePointerForMetadata(_chainId),
+                _dataStore.SetDataAsync(Path.CalculatePointerForMetadata(ChainId),
                     GenerateSerializeFunctionMetadataMap().ToByteArray());
             }
             catch (FunctionMetadataException e)

@@ -14,33 +14,38 @@ using Xunit.Frameworks.Autofac;
 namespace AElf.Kernel.Tests.Concurrency.Metadata
 {
     [UseAutofacTestFramework]
-    public class ChainFunctionMetadataServiceTest
+    public class ChainFunctionMetadataTest
     {
     
         private ParallelTestDataUtil util = new ParallelTestDataUtil();
         
         private IDataStore _templateStore;
-        private Hash _chainId;
+        private ChainFunctionMetadataTemplate _template;
         
 
-        public ChainFunctionMetadataServiceTest(IDataStore templateStore, Hash chainId)
+        public ChainFunctionMetadataTest(IDataStore templateStore, ChainFunctionMetadataTemplate template)
         {
             _templateStore = templateStore ?? throw new ArgumentNullException(nameof(templateStore));
-            _chainId = chainId;
+            _template = template;
         }
 
         [Fact]
-        public async Task<ChainFunctionMetadataService> TestDeployNewFunction()
+        public async Task<ChainFunctionMetadata> TestDeployNewFunction()
         {
-            ChainFunctionMetadataTemplateServiceTest templateTest = new ChainFunctionMetadataTemplateServiceTest(_templateStore, _chainId);
-            var templateService = await templateTest.TestTryAddNewContract();
-            ChainFunctionMetadataService cfms = new ChainFunctionMetadataService(templateService, _templateStore, _chainId);
-            cfms.FunctionMetadataMap.Clear();
+            Hash chainId = _template.ChainId;
+            _template.CallingGraph.Clear();
+            _template.ContractMetadataTemplateMap.Clear();
+            await _template.TryAddNewContract(typeof(TestContractC));
+            await _template.TryAddNewContract(typeof(TestContractB));
+            await _template.TryAddNewContract(typeof(TestContractA));
+            ChainFunctionMetadata cfms = new ChainFunctionMetadata(_template, _templateStore);
             
+            cfms.FunctionMetadataMap.Clear();
 
-            var addrA = Hash.Generate();
-            var addrB = Hash.Generate();
-            var addrC = Hash.Generate();
+
+            var addrA = new Hash("TestContractA".CalculateHash());
+            var addrB = new Hash("TestContractB".CalculateHash());
+            var addrC = new Hash("TestContractC".CalculateHash());
             
             var referenceBookForA = new Dictionary<string, Hash>();
             var referenceBookForB = new Dictionary<string, Hash>();
@@ -51,7 +56,7 @@ namespace AElf.Kernel.Tests.Concurrency.Metadata
             cfms.DeployNewContract("TestContractC", addrC, referenceBookForC);
             
             groundTruthMap.Add(
-                addrC.Value.ToBase64() + ".Func0()", 
+                addrC.Value.ToBase64() + ".Func0", 
                 new FunctionMetadata(
                     new HashSet<string>(),
                     new HashSet<Resource>(new []
@@ -64,7 +69,7 @@ namespace AElf.Kernel.Tests.Concurrency.Metadata
                     })));
             
             groundTruthMap.Add(
-                addrC.Value.ToBase64() + ".Func1()", 
+                addrC.Value.ToBase64() + ".Func1", 
                 new FunctionMetadata(
                     new HashSet<string>(),
                     new HashSet<Resource>(new []
@@ -83,11 +88,11 @@ namespace AElf.Kernel.Tests.Concurrency.Metadata
             cfms.DeployNewContract("TestContractB", addrB, referenceBookForB);
             
             groundTruthMap.Add(
-                addrB.Value.ToBase64() + ".Func0()",
+                addrB.Value.ToBase64() + ".Func0",
                 new FunctionMetadata(
                     new HashSet<string>(new []
                     {
-                        addrC.Value.ToBase64() + ".Func1()"
+                        addrC.Value.ToBase64() + ".Func1"
                     }),
                     new HashSet<Resource>(new []
                     {
@@ -100,7 +105,7 @@ namespace AElf.Kernel.Tests.Concurrency.Metadata
                     })));
             
             groundTruthMap.Add(
-                addrB.Value.ToBase64() + ".Func1()",
+                addrB.Value.ToBase64() + ".Func1",
                 new FunctionMetadata(
                     new HashSet<string>(),
                     new HashSet<Resource>(new []
@@ -127,11 +132,11 @@ namespace AElf.Kernel.Tests.Concurrency.Metadata
                     new HashSet<Resource>()));
             
             groundTruthMap.Add(
-                addrA.Value.ToBase64() + ".Func0()",
+                addrA.Value.ToBase64() + ".Func0",
                 new FunctionMetadata(
                     new HashSet<string>(new []
                     {
-                        addrA.Value.ToBase64() + ".Func1()"
+                        addrA.Value.ToBase64() + ".Func1"
                     }),
                     new HashSet<Resource>(new []
                     {
@@ -145,11 +150,11 @@ namespace AElf.Kernel.Tests.Concurrency.Metadata
                     })));
             
             groundTruthMap.Add(
-                addrA.Value.ToBase64() + ".Func1()",
+                addrA.Value.ToBase64() + ".Func1",
                 new FunctionMetadata(
                     new HashSet<string>(new []
                     {
-                        addrA.Value.ToBase64() + ".Func2()"
+                        addrA.Value.ToBase64() + ".Func2"
                     }),
                     new HashSet<Resource>(new[]
                     {
@@ -162,7 +167,7 @@ namespace AElf.Kernel.Tests.Concurrency.Metadata
                     })));
             
             groundTruthMap.Add(
-                addrA.Value.ToBase64() + ".Func2()",
+                addrA.Value.ToBase64() + ".Func2",
                 new FunctionMetadata(
                     new HashSet<string>(),
                     new HashSet<Resource>(new[]
@@ -177,13 +182,13 @@ namespace AElf.Kernel.Tests.Concurrency.Metadata
                     })));
             
             groundTruthMap.Add(
-                addrA.Value.ToBase64() + ".Func3()",
+                addrA.Value.ToBase64() + ".Func3",
                 new FunctionMetadata(
                     new HashSet<string>(new []
                     {
-                        addrA.Value.ToBase64() + ".Func0()",
-                        addrB.Value.ToBase64() + ".Func0()", 
-                        addrC.Value.ToBase64() + ".Func0()"
+                        addrA.Value.ToBase64() + ".Func0",
+                        addrB.Value.ToBase64() + ".Func0", 
+                        addrC.Value.ToBase64() + ".Func0"
                     }),
                     new HashSet<Resource>(new[]
                     {
@@ -200,11 +205,11 @@ namespace AElf.Kernel.Tests.Concurrency.Metadata
                     })));
             
             groundTruthMap.Add(
-                addrA.Value.ToBase64() + ".Func4()",
+                addrA.Value.ToBase64() + ".Func4",
                 new FunctionMetadata(
                     new HashSet<string>(new []
                     {
-                        addrA.Value.ToBase64() + ".Func2()"
+                        addrA.Value.ToBase64() + ".Func2"
                     }),
                     new HashSet<Resource>(new[]
                     {
@@ -214,12 +219,12 @@ namespace AElf.Kernel.Tests.Concurrency.Metadata
                     new HashSet<Resource>()));
             
             groundTruthMap.Add(
-                addrA.Value.ToBase64() + ".Func5()",
+                addrA.Value.ToBase64() + ".Func5",
                 new FunctionMetadata(
                     new HashSet<string>(new []
                     {
-                        addrA.Value.ToBase64() + ".Func3()",
-                        addrB.Value.ToBase64() + ".Func1()"
+                        addrA.Value.ToBase64() + ".Func3",
+                        addrB.Value.ToBase64() + ".Func1"
                     }),
                     new HashSet<Resource>(new[]
                     {
@@ -236,8 +241,8 @@ namespace AElf.Kernel.Tests.Concurrency.Metadata
             Assert.Equal(util.FunctionMetadataMapToString(groundTruthMap), util.FunctionMetadataMapToString(cfms.FunctionMetadataMap));
 
             //test restore
-            ChainFunctionMetadataTemplateService retoredTemplateService  = new ChainFunctionMetadataTemplateService(_templateStore, _chainId);
-            ChainFunctionMetadataService newCFMS = new ChainFunctionMetadataService(retoredTemplateService, _templateStore, _chainId);
+            ChainFunctionMetadataTemplate retoredTemplate  = new ChainFunctionMetadataTemplate(_templateStore, chainId);
+            ChainFunctionMetadata newCFMS = new ChainFunctionMetadata(retoredTemplate, _templateStore);
             Assert.Equal(util.FunctionMetadataMapToString(cfms.FunctionMetadataMap), util.FunctionMetadataMapToString(newCFMS.FunctionMetadataMap));
             
             return cfms;
@@ -247,7 +252,7 @@ namespace AElf.Kernel.Tests.Concurrency.Metadata
         [Fact]
         public void TestSetNewFunctionMetadata()
         {    /*
-            ChainFunctionMetadataService functionMetadataService = new ChainFunctionMetadataService(null);
+            ChainFunctionMetadata functionMetadataService = new ChainFunctionMetadata(null);
             ParallelTestDataUtil util = new ParallelTestDataUtil();
 
             var pathSetForZ = new HashSet<string>();
@@ -284,7 +289,7 @@ namespace AElf.Kernel.Tests.Concurrency.Metadata
             //correct one
             ParallelTestDataUtil util = new ParallelTestDataUtil();
             var metadataList = util.GetFunctionMetadataMap(util.GetFunctionCallingGraph(), util.GetFunctionNonRecursivePathSet());
-            ChainFunctionMetadataService correctFunctionMetadataService = new ChainFunctionMetadataService(null);
+            ChainFunctionMetadata correctFunctionMetadataService = new ChainFunctionMetadata(null);
             foreach (var functionMetadata in metadataList)
             {
                 Assert.True(correctFunctionMetadataService.DeployNewFunction(functionMetadata.Key,
@@ -295,7 +300,7 @@ namespace AElf.Kernel.Tests.Concurrency.Metadata
             
             //Wrong one (there are circle where [P call O], [O call N], [N call P])
             metadataList.First(a => a.Key == "P").Value.CallingSet.Add("O");
-            ChainFunctionMetadataService wrongFunctionMetadataService = new ChainFunctionMetadataService(null);
+            ChainFunctionMetadata wrongFunctionMetadataService = new ChainFunctionMetadata(null);
             foreach (var functionMetadata in metadataList)
             {
                 if (!"PNO".Contains(functionMetadata.Key) )
