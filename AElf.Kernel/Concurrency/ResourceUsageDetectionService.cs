@@ -6,11 +6,11 @@ namespace AElf.Kernel.Concurrency.Scheduling
 {
     public class ResourceUsageDetectionService : IResourceUsageDetectionService
     {
-        private readonly IChainFunctionMetadata _chainFunctionMetadata;
+        public IChainFunctionMetadata ChainFunctionMetadata { get; set;} 
 
         public ResourceUsageDetectionService(IChainFunctionMetadata chainFunctionMetadata)
         {
-            _chainFunctionMetadata = chainFunctionMetadata;
+            ChainFunctionMetadata = chainFunctionMetadata;
         }
 
         public IEnumerable<string> GetResources(ITransaction transaction)
@@ -18,7 +18,7 @@ namespace AElf.Kernel.Concurrency.Scheduling
             var addrs = Parameters.Parser.ParseFrom(transaction.Params).Params.Select(p => p.HashVal).Where(y => y != null).Select(a => a.Value.ToBase64()).ToList();
 
             var results = new List<string>();
-            var resourceList = _chainFunctionMetadata.GetFunctionMetadata(GetFunctionName(transaction)).FullResourceSet;
+            var resourceList = ChainFunctionMetadata.GetFunctionMetadata(GetFunctionName(transaction)).FullResourceSet;
             foreach (var resource in resourceList)
             {
                 switch (resource.DataAccessMode)

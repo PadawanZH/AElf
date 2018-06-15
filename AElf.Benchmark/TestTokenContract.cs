@@ -27,6 +27,7 @@ namespace AElf.Benchmark
         
         public async Task<object> InitializeAsync(string tokenContractName, Hash owner)
         {
+            //Console.WriteLine("InitializeAsync " + tokenContractName + " " + owner.Value.ToBase64());
             TokenContractName = tokenContractName;
             Owner = owner;
             return null;
@@ -41,13 +42,13 @@ namespace AElf.Benchmark
             var member = type.GetMethod(methodname);
             // params array
             var parameters = Parameters.Parser.ParseFrom(tx.Params).Params.Select(p => p.Value()).ToArray();
-            
             // invoke
             await (Task<object>) member.Invoke(this, parameters);
         }
         
         public async Task<bool> InitBalance(Hash addr, Hash owner)
         {
+            //Console.WriteLine("InitBalance " + addr + " " + owner);
             if (owner == Owner)
             {
                 var balance = new UInt64Value();
@@ -72,6 +73,7 @@ namespace AElf.Benchmark
             if (newFromBal > 0)
             {
                 var newToBal = toBal + qty;
+                
                 await Balances.SetValueAsync(from, new UInt64Value
                 {
                     Value = newFromBal
@@ -80,6 +82,7 @@ namespace AElf.Benchmark
                 {
                     Value = newToBal
                 }.ToByteArray());
+                
                 return true;
             }
             else

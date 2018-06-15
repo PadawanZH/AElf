@@ -9,15 +9,22 @@ namespace AElf.Benchmark
 {
     public class TransactionDataGenerator
     {
-        
-        
-        private IEnumerable<KeyValuePair<Hash, Hash>> GenerateTransferAddressPair(int totalNumber, double conflictRate, out Dictionary<Hash, ECKeyPair> keyDict)
+        private int _totalNumber;
+        private double _conflictRate;
+
+        public TransactionDataGenerator(int totalNumber, double conflictRate)
+        {
+            _totalNumber = totalNumber;
+            this._conflictRate = conflictRate;
+        }
+
+        public IEnumerable<KeyValuePair<Hash, Hash>> GenerateTransferAddressPair(out Dictionary<Hash, ECKeyPair> keyDict)
         {
             keyDict = new Dictionary<Hash, ECKeyPair>();
             var txAccountList = new List<KeyValuePair<Hash, Hash>>();
             var keyPairGenerator = new KeyPairGenerator();
             
-            int conflictTxCount = (int) (conflictRate * totalNumber);
+            int conflictTxCount = (int) (_conflictRate * _totalNumber);
             var conflictKeyPair = keyPairGenerator.Generate();
             var conflictAddr = new Hash(conflictKeyPair.GetAddress());
             keyDict.Add(new Hash(conflictKeyPair.GetAddress()), conflictKeyPair);
@@ -30,7 +37,7 @@ namespace AElf.Benchmark
                 keyDict.Add(senderAddr, senderKp);
             }
 
-            for (int i = 0; i < totalNumber - conflictTxCount; i++)
+            for (int i = 0; i < _totalNumber - conflictTxCount; i++)
             {
                 var senderKp = keyPairGenerator.Generate();
                 var senderAddr = new Hash(senderKp.GetAddress());
@@ -46,9 +53,8 @@ namespace AElf.Benchmark
         
         
 
-        public List<ITransaction> GenerateTransferTransactions(Hash tokenContractAddr, int totalNumber, double conflictRate, out Dictionary<Hash, ECKeyPair> keyDict)
+        public List<ITransaction> GenerateTransferTransactions(Hash tokenContractAddr, IEnumerable<KeyValuePair<Hash, Hash>> transferAddressPairs, Dictionary<Hash, ECKeyPair> keyDict)
         {
-            var transferAddressPairs = GenerateTransferAddressPair(totalNumber, conflictRate, out keyDict);
             var resList = new List<ITransaction>();
             foreach (var addressPair in transferAddressPairs)
             {

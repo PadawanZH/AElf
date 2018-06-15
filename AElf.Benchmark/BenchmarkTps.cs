@@ -8,12 +8,19 @@ using System.Threading.Tasks;
 using AElf.Cryptography.ECDSA;
 using AElf.Kernel;
 using AElf.Kernel.Concurrency;
+using AElf.Kernel.Concurrency.Execution;
+using AElf.Kernel.Concurrency.Execution.Messages;
+using AElf.Kernel.Concurrency.Metadata;
 using AElf.Kernel.Extensions;
 using AElf.Kernel.KernelAccount;
 using AElf.Kernel.Managers;
+using AElf.Kernel.Modules.AutofacModule;
 using AElf.Kernel.Services;
+using AElf.Kernel.Storages;
 using AElf.Runtime.CSharp;
+using AElf.Sdk.CSharp;
 using Akka.Actor;
+using Autofac;
 using Google.Protobuf;
 using ServiceStack;
 
@@ -26,18 +33,47 @@ namespace AElf.Benchmark
         private IBlockManager _blockManager;
         private ISmartContractManager _smartContractManager;
         private ISmartContractService _smartContractService;
+        private ITransactionContext _transactionContext;
+        private ISmartContractContext _smartContractContext;
+        private IChainContextService _chainContextService;
+        private IResourceUsageDetectionService _resourceUsageDetectionService;
+        private IChainFunctionMetadata _chainFunctionMetadata;
+        private IChainFunctionMetadataTemplate _chainFunctionMetadataTemplate;
+        private IDataStore _dataStore;
+
+        private ServicePack _servicePack;
         
         private ISmartContractRunnerFactory _smartContractRunnerFactory = new SmartContractRunnerFactory();
 
-        public Benchmarks(IWorldStateManager worldStateManager, IChainCreationService chainCreationService, IBlockManager blockManager, ISmartContractManager smartContractManager)
+        public Benchmarks(IWorldStateManager worldStateManager, IChainCreationService chainCreationService, IBlockManager blockManager, ISmartContractManager smartContractManager, IChainContextService chainContextService, IResourceUsageDetectionService resourceUsageDetectionService, IChainFunctionMetadata chainFunctionMetadata, IChainFunctionMetadataTemplate chainFunctionMetadataTemplate, IDataStore dataStore, ITransactionContext transactionContext, ISmartContractContext smartContractContext, Hash chainId = null)
         {
+            ChainId = chainId;
             _worldStateManager = worldStateManager;
             _chainCreationService = chainCreationService;
             _blockManager = blockManager;
             _smartContractManager = smartContractManager;
+            _chainContextService = chainContextService;
+            _resourceUsageDetectionService = resourceUsageDetectionService;
+            _chainFunctionMetadata = chainFunctionMetadata;
+            _chainFunctionMetadataTemplate = chainFunctionMetadataTemplate;
+            _dataStore = dataStore;
+            _transactionContext = transactionContext;
+            _smartContractContext = smartContractContext;
+
+
+            var runner = new SmartContractRunner("./bin/Debug/netcoreapp2.0/");
+            _smartContractRunnerFactory.AddRunner(0, runner);
+            _smartContractService = new SmartContractService(_smartContractManager, _smartContractRunnerFactory, _worldStateManager);
+
+            _servicePack = new ServicePack()
+            {
+                ChainContextService = _chainContextService,
+                SmartContractService = _smartContractService,
+                ResourceDetectionService = _resourceUsageDetectionService
+            };
         }
 
-        private Hash ChainId { get; } = Hash.Generate();
+        private Hash ChainId { get; }
         private int _incrementId = 0;
         
         public byte[] SmartContractZeroCode
@@ -45,7 +81,7 @@ namespace AElf.Benchmark
             get
             {
                 byte[] code = null;
-                using (FileStream file = File.OpenRead(System.IO.Path.GetFullPath("../../../../AElf.Contracts.SmartContractZero/bin/Debug/netstandard2.0/AElf.Contracts.SmartContractZero.dll")))
+                using (FileStream file = File.OpenRead(System.IO.Path.GetFullPath("../AElf.Contracts.SmartContractZero/bin/Debug/netstandard2.0/AElf.Contracts.SmartContractZero.dll")))
                 {
                     code = file.ReadFully();
                 }
@@ -53,26 +89,30 @@ namespace AElf.Benchmark
             }
         }
 
-        public static void Main()
-        {
-            
-        }
-        
         public async Task<Dictionary<string, double>> RunBenchmark(int txNumber, double conflictRate)
         {
-            TransactionDataGenerator dataGenerator = new TransactionDataGenerator();
-
-            var txList = dataGenerator.GenerateTransferTransactions("AElfTestContract".CalculateHash(), txNumber, conflictRate,
-                out var keyDict);
+            TransactionDataGenerator dataGenerator = new TransactionDataGenerator(txNumber, conflictRate);
+            var addressPair = dataGenerator.GenerateTransferAddressPair(out var keyDict);
+            Console.WriteLine(keyDict.Count + " pub-priv key pair generated");
 
             byte[] code = null;
-            using (FileStream file = File.OpenRead(System.IO.Path.GetFullPath("AElf.Benchmark.dll")))
+            using (FileStream file = File.OpenRead(System.IO.Path.GetFullPath("./bin/Debug/netcoreapp2.0/AElf.Benchmark.dll")))
             {
                 code = file.ReadFully();
             }
 
-            var contractHash = await Prepare("./", code, keyDict.Keys);
+            var contractHash = await Prepare(code, keyDict.Keys);
+            Console.WriteLine("Perparation done");
             
+            var txList = dataGenerator.GenerateTransferTransactions(contractHash, addressPair, keyDict);
+            Console.WriteLine(txList.Count + " tx generated");
+            
+            foreach (var tx in txList)
+            {
+                tx.To = contractHash;
+            }
+            
+            Console.WriteLine("start to check signature");
             Stopwatch swVerifer = new Stopwatch();
             swVerifer.Start();
 
@@ -94,12 +134,16 @@ namespace AElf.Benchmark
             Task.WaitAll(tasks.ToArray());
             
             swVerifer.Stop();
-
+            
+            Console.WriteLine("start execute");
             //Execution
             Stopwatch swExec = new Stopwatch();
             swExec.Start();
 
             var sysActor = ActorSystem.Create("benchmark");
+            var _serviceRouter = sysActor.ActorOf(LocalServicesProvider.Props(_servicePack));
+            var _generalExecutor = sysActor.ActorOf(GeneralExecutor.Props(sysActor, _serviceRouter), "exec");
+            _generalExecutor.Tell(new RequestAddChainExecutor(ChainId));
             var executingService = new ParallelTransactionExecutingService(sysActor);
             var txResult = Task.Factory.StartNew(async () =>
             {
@@ -108,6 +152,31 @@ namespace AElf.Benchmark
             
             swExec.Stop();
             
+            
+            
+            Api.SetSmartContractContext(_smartContractContext);
+            Api.SetTransactionContext(_transactionContext);
+            
+            TestTokenContract contract = new TestTokenContract();
+            await contract.InitializeAsync("token1", Hash.Zero.ToAccount());
+
+            foreach (var kv in keyDict)
+            {
+                await contract.InitBalance(kv.Key, Hash.Zero.ToAccount());
+            }
+            
+            
+            Stopwatch swNoReflaction = new Stopwatch();
+            swNoReflaction.Start();
+            
+            foreach (var tx in txList)
+            {
+                contract.Transfer(tx.From, tx.To, 50);
+            }
+            
+            
+            swNoReflaction.Stop();
+            
             Dictionary<string, double> res = new Dictionary<string, double>();
 
             var verifyPerSec = txNumber / (swVerifer.ElapsedMilliseconds / 1000.0);
@@ -115,6 +184,9 @@ namespace AElf.Benchmark
 
             var executeTPS = txNumber / (swExec.ElapsedMilliseconds / 1000.0);
             res.Add("executeTPS", executeTPS);
+
+            var executeTPSNoReflection = txNumber / (swNoReflaction.ElapsedMilliseconds / 1000.0);
+            res.Add("executeTPSNoReflection", executeTPSNoReflection);
             return res;
         }
         
@@ -124,13 +196,8 @@ namespace AElf.Benchmark
             return (ulong)n;
         }
 
-        public async Task<Hash> Prepare(string pathToContractDll, byte[] contractCode, IEnumerable<Hash> addrBook)
+        public async Task<Hash> Prepare(byte[] contractCode, IEnumerable<Hash> addrBook)
         {
-            //init smart contract service
-            var runner = new SmartContractRunner(pathToContractDll);
-            _smartContractRunnerFactory.AddRunner(0, runner);
-            _smartContractService = new SmartContractService(_smartContractManager, _smartContractRunnerFactory, _worldStateManager);
-            
             //create smart contact zero
             var reg = new SmartContractRegistration
             {
@@ -141,8 +208,10 @@ namespace AElf.Benchmark
             
             var chain = await _chainCreationService.CreateNewChainAsync(ChainId, reg);
             var genesis = await _blockManager.GetBlockAsync(chain.GenesisBlockHash);
-            var contractAddressZero = ChainId.CalculateHashWith("__SmartContractZero__");
-
+            var contractAddressZero = new Hash(ChainId.CalculateHashWith("__SmartContractZero__")).ToAccount();
+            
+            
+            
             //deploy token contract
             var code = contractCode;
 
@@ -155,7 +224,7 @@ namespace AElf.Benchmark
             
             var txnDep = new Transaction()
             {
-                From = Hash.Zero,
+                From = Hash.Zero.ToAccount(),
                 To = contractAddressZero,
                 IncrementId = NewIncrementId(),
                 MethodName = "DeploySmartContract",
@@ -178,12 +247,19 @@ namespace AElf.Benchmark
             var executive = await _smartContractService.GetExecutiveAsync(contractAddressZero, ChainId);
             await executive.SetTransactionContext(txnCtxt).Apply();
             
+            
             var contractAddr = txnCtxt.Trace.RetVal.Unpack<Hash>();
+            
+            //set metadata template else where
+            _chainFunctionMetadataTemplate.TryAddNewContract(typeof(TestTokenContract));
+            _chainFunctionMetadata = new ChainFunctionMetadata(_chainFunctionMetadataTemplate, _dataStore);
+            _chainFunctionMetadata.DeployNewContract("TestTokenContract", contractAddr, new Dictionary<string, Hash>());
+            _servicePack.ResourceDetectionService.ChainFunctionMetadata = _chainFunctionMetadata;
             
             //init contract
             var txnInit = new Transaction
             {
-                From = Hash.Zero,
+                From = Hash.Zero.ToAccount(),
                 To = contractAddr,
                 IncrementId = NewIncrementId(),
                 MethodName = "InitializeAsync",
@@ -196,7 +272,7 @@ namespace AElf.Benchmark
                         },
                         new Param
                         {
-                            HashVal = Hash.Zero
+                            HashVal = Hash.Zero.ToAccount()
                         }
                     }
                 }.ToByteArray())
@@ -217,7 +293,7 @@ namespace AElf.Benchmark
                 {
                     var txnBalInit = new Transaction
                     {
-                        From = Hash.Zero,
+                        From = Hash.Zero.ToAccount(),
                         To = contractAddr,
                         IncrementId = NewIncrementId(),
                         MethodName = "InitBalance",
@@ -230,7 +306,7 @@ namespace AElf.Benchmark
                                 },
                                 new Param
                                 {
-                                    HashVal = Hash.Zero
+                                    HashVal = Hash.Zero.ToAccount()
                                 }
                             }
                         }.ToByteArray())
@@ -238,7 +314,7 @@ namespace AElf.Benchmark
             
                     var txnBalInitCtx = new TransactionContext()
                     {
-                        Transaction = txnInit
+                        Transaction = txnBalInit
                     };
                     var executiveBalInitUser = await _smartContractService.GetExecutiveAsync(contractAddr, ChainId);
                     await executiveBalInitUser.SetTransactionContext(txnBalInitCtx).Apply();

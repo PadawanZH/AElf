@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
 using System.Collections.Generic;
 
 namespace AElf.Kernel.Concurrency.Scheduling
@@ -71,6 +72,19 @@ namespace AElf.Kernel.Concurrency.Scheduling
                 }
             }
             result.AddRange(grouped.Values);
+            /*
+            Console.WriteLine("Start grouping");
+            foreach (var txl in result)
+            {
+                Console.WriteLine("Group: ");
+                foreach (var tx in txl)
+                {
+                    Console.Write("[ from:" + tx.From + ", to:" + tx.To + " ]");
+                }
+
+                Console.WriteLine();
+            }
+            */
             return result;
         }
     }
