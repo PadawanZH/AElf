@@ -11,8 +11,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\AElf.CLI\AElf.CLI.csproj">
-      <Project>{3D3CEB2A-7143-4F40-8C9D-776D34C9BC3E}</Project>
-      <Name>AElf.CLI</Name>
     </ProjectReference>
   </ItemGroup>
 </Project>

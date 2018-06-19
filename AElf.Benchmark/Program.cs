@@ -37,9 +37,29 @@ namespace AElf.Benchmark
             using(var scope = container.BeginLifetimeScope())
             {
                 var benchmarkTps = scope.Resolve<Benchmarks>();
-                var resDict = benchmarkTps.RunBenchmark(1, 0).Result;
 
-                foreach (var kv in resDict)
+                var baseline = benchmarkTps.SingleGroupBenchmark(3000, 1).Result;
+
+                /*
+                Console.WriteLine("Base line");
+                foreach (var kv in baseline)
+                {
+                    Console.WriteLine(kv.Key + ": " + kv.Value);
+                }
+
+                for (double i = 0; i < 1; i+= 0.2)
+                {
+                    var resDict = benchmarkTps.SingleGroupBenchmark(3000, 0).Result;
+
+                    Console.WriteLine("--------------------\n" + "Tx count: " + 3000 + "| Conflict rate: " + i);
+                    foreach (var kv in resDict)
+                    {
+                        Console.WriteLine(kv.Key + ": " + kv.Value);
+                    }
+                }
+                */
+                var multiGroupRes = benchmarkTps.MultipleGroupBenchmark(4000, 10);
+                foreach (var kv in multiGroupRes)
                 {
                     Console.WriteLine(kv.Key + ": " + kv.Value);
                 }

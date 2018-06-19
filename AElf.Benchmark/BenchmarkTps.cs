@@ -11,6 +11,7 @@ using AElf.Kernel.Concurrency;
 using AElf.Kernel.Concurrency.Execution;
 using AElf.Kernel.Concurrency.Execution.Messages;
 using AElf.Kernel.Concurrency.Metadata;
+using AElf.Kernel.Concurrency.Scheduling;
 using AElf.Kernel.Extensions;
 using AElf.Kernel.KernelAccount;
 using AElf.Kernel.Managers;
@@ -20,6 +21,7 @@ using AElf.Kernel.Storages;
 using AElf.Runtime.CSharp;
 using AElf.Sdk.CSharp;
 using Akka.Actor;
+using Akka.Dispatch.SysMsg;
 using Autofac;
 using Google.Protobuf;
 using ServiceStack;
@@ -42,6 +44,9 @@ namespace AElf.Benchmark
         private IDataStore _dataStore;
 
         private ServicePack _servicePack;
+
+        private TransactionDataGenerator _dataGenerater;
+        private Hash _contractHash;
         
         private ISmartContractRunnerFactory _smartContractRunnerFactory = new SmartContractRunnerFactory();
 
@@ -71,6 +76,18 @@ namespace AElf.Benchmark
                 SmartContractService = _smartContractService,
                 ResourceDetectionService = _resourceUsageDetectionService
             };
+            
+            _dataGenerater = new TransactionDataGenerator(10000);
+            byte[] code = null;
+            using (FileStream file = File.OpenRead(System.IO.Path.GetFullPath("./bin/Debug/netcoreapp2.0/AElf.Benchmark.dll")))
+            {
+                code = file.ReadFully();
+            }
+            
+            _contractHash = Prepare(code).Result;
+            
+            InitContract(_contractHash, _dataGenerater.KeyDict.Keys).GetResult();
+            
         }
 
         private Hash ChainId { get; }
@@ -89,30 +106,10 @@ namespace AElf.Benchmark
             }
         }
 
-        public async Task<Dictionary<string, double>> RunBenchmark(int txNumber, double conflictRate)
+        public async Task<Dictionary<string, double>> SingleGroupBenchmark(int txNumber, double conflictRate)
         {
-            TransactionDataGenerator dataGenerator = new TransactionDataGenerator(txNumber, conflictRate);
-            var addressPair = dataGenerator.GenerateTransferAddressPair(out var keyDict);
-            Console.WriteLine(keyDict.Count + " pub-priv key pair generated");
-
-            byte[] code = null;
-            using (FileStream file = File.OpenRead(System.IO.Path.GetFullPath("./bin/Debug/netcoreapp2.0/AElf.Benchmark.dll")))
-            {
-                code = file.ReadFully();
-            }
-
-            var contractHash = await Prepare(code, keyDict.Keys);
-            Console.WriteLine("Perparation done");
-            
-            var txList = dataGenerator.GenerateTransferTransactions(contractHash, addressPair, keyDict);
-            Console.WriteLine(txList.Count + " tx generated");
-            
-            foreach (var tx in txList)
-            {
-                tx.To = contractHash;
-            }
-            
-            Console.WriteLine("start to check signature");
+            var txList = _dataGenerater.GetTxsWithOneConflictGroup(_contractHash, txNumber, conflictRate);
+            //Console.WriteLine("start to check signature");
             Stopwatch swVerifer = new Stopwatch();
             swVerifer.Start();
 
@@ -135,7 +132,9 @@ namespace AElf.Benchmark
             
             swVerifer.Stop();
             
-            Console.WriteLine("start execute");
+            Console.WriteLine("-------------------------------------");
+            Console.WriteLine("Benchmark with single conflict group");
+            Console.WriteLine("-------------------------------------");
             //Execution
             Stopwatch swExec = new Stopwatch();
             swExec.Start();
@@ -151,28 +150,27 @@ namespace AElf.Benchmark
             }).Unwrap().Result;
             
             swExec.Stop();
-            
-            
-            
+
+            var dataProvider = (await _worldStateManager.OfChain(ChainId)).GetAccountDataProvider(_contractHash).GetDataProvider();
+            _smartContractContext.ChainId = ChainId;
+            _smartContractContext.DataProvider = dataProvider;
             Api.SetSmartContractContext(_smartContractContext);
             Api.SetTransactionContext(_transactionContext);
             
             TestTokenContract contract = new TestTokenContract();
             await contract.InitializeAsync("token1", Hash.Zero.ToAccount());
-
-            foreach (var kv in keyDict)
-            {
-                await contract.InitBalance(kv.Key, Hash.Zero.ToAccount());
-            }
-            
-            
+  
             Stopwatch swNoReflaction = new Stopwatch();
             swNoReflaction.Start();
             
+            var exTaskList = new List<Task>();
             foreach (var tx in txList)
             {
-                contract.Transfer(tx.From, tx.To, 50);
+                var task = Task.Run(() => { contract.Transfer(tx.From, tx.To, 50); });
+                exTaskList.Add(task);
             }
+
+            Task.WaitAll(exTaskList.ToArray());
             
             
             swNoReflaction.Stop();
@@ -187,6 +185,45 @@ namespace AElf.Benchmark
 
             var executeTPSNoReflection = txNumber / (swNoReflaction.ElapsedMilliseconds / 1000.0);
             res.Add("executeTPSNoReflection", executeTPSNoReflection);
+            
+            
+            
+            return res;
+        }
+
+        public Dictionary<string, double> MultipleGroupBenchmark(int txNumber, int maxGroupNumber)
+        {
+            var res = new Dictionary<string, double>();
+            //prepare data
+            Console.WriteLine("-------------------------------------");
+            Console.WriteLine("Benchmark with multiple conflict group");
+            Console.WriteLine("-------------------------------------");
+
+            var sysActor = ActorSystem.Create("benchmark");
+            var _serviceRouter = sysActor.ActorOf(LocalServicesProvider.Props(_servicePack));
+            var _generalExecutor = sysActor.ActorOf(GeneralExecutor.Props(sysActor, _serviceRouter), "exec");
+            _generalExecutor.Tell(new RequestAddChainExecutor(ChainId));
+            
+            var executingService = new ParallelTransactionExecutingService(sysActor);
+            
+            for (int groupCount = 1; groupCount <= maxGroupNumber; groupCount++)
+            {
+                var txList = _dataGenerater.GetMultipleGroupTx(txNumber, groupCount, _contractHash);
+                Stopwatch swExec = new Stopwatch();
+                swExec.Start();
+
+                var txResult = Task.Factory.StartNew(async () =>
+                {
+                    return await executingService.ExecuteAsync(txList, ChainId);
+                }).Unwrap().Result;
+            
+                swExec.Stop();
+
+                var time = txNumber / (swExec.ElapsedMilliseconds / 1000.0);
+                var str = groupCount + " groups with " + txList.Count + " tx in total";
+                res.Add(str, time);
+            }
+
             return res;
         }
         
@@ -196,7 +233,7 @@ namespace AElf.Benchmark
             return (ulong)n;
         }
 
-        public async Task<Hash> Prepare(byte[] contractCode, IEnumerable<Hash> addrBook)
+        public async Task<Hash> Prepare(byte[] contractCode)
         {
             //create smart contact zero
             var reg = new SmartContractRegistration
@@ -256,6 +293,12 @@ namespace AElf.Benchmark
             _chainFunctionMetadata.DeployNewContract("TestTokenContract", contractAddr, new Dictionary<string, Hash>());
             _servicePack.ResourceDetectionService.ChainFunctionMetadata = _chainFunctionMetadata;
             
+            
+            return contractAddr;
+        }
+
+        public async Task InitContract(Hash contractAddr, IEnumerable<Hash> addrBook)
+        {
             //init contract
             var txnInit = new Transaction
             {
@@ -323,8 +366,27 @@ namespace AElf.Benchmark
             }
 
             Task.WaitAll(tasks.ToArray());
+        }
+
+        public double BenchmarkGrouping(int txNumber, double conflictRate, List<ITransaction> txList)
+        {
+            byte[] code = null;
+            using (FileStream file = File.OpenRead(System.IO.Path.GetFullPath("./bin/Debug/netcoreapp2.0/AElf.Benchmark.dll")))
+            {
+                code = file.ReadFully();
+            }
+
+            var contractHash = Prepare(code).Result;
             
-            return contractAddr;
+            Grouper grouper = new Grouper(_servicePack.ResourceDetectionService);
+            
+            Stopwatch sw = new Stopwatch();
+            sw.Start();
+
+            grouper.Process(txList);
+            
+            sw.Stop();
+            return txNumber / (sw.ElapsedMilliseconds / 1000.0);
         }
         
     }

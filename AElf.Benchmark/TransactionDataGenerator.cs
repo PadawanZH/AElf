@@ -3,63 +3,88 @@ using System.Collections.Generic;
 using AElf.Cryptography.ECDSA;
 using AElf.Kernel;
 using AElf.Kernel.TxMemPool;
+using Akka.Util.Internal.Collections;
 using Google.Protobuf;
+using Org.BouncyCastle.Security;
 
 namespace AElf.Benchmark
 {
     public class TransactionDataGenerator
     {
         private int _totalNumber;
-        private double _conflictRate;
+        public Dictionary<Hash, ECKeyPair> KeyDict;
 
-        public TransactionDataGenerator(int totalNumber, double conflictRate)
+        public TransactionDataGenerator(int maxNumber)
         {
-            _totalNumber = totalNumber;
-            this._conflictRate = conflictRate;
+            _totalNumber = maxNumber;
+            KeyDict = new Dictionary<Hash, ECKeyPair>();
+            for (int i = 0; i < maxNumber + 100; i++)
+            {
+                var keyPairGenerator = new KeyPairGenerator();
+                var kpair = keyPairGenerator.Generate();
+                KeyDict.Add(new Hash(kpair.GetAddress()), kpair);
+            }
         }
 
-        public IEnumerable<KeyValuePair<Hash, Hash>> GenerateTransferAddressPair(out Dictionary<Hash, ECKeyPair> keyDict)
+        private IEnumerable<KeyValuePair<Hash, Hash>> GenerateTransferAddressPair(int txCount, double conflictRate, ref Iterator<KeyValuePair<Hash, ECKeyPair>> keyDictIter)
         {
-            keyDict = new Dictionary<Hash, ECKeyPair>();
+            if (txCount > _totalNumber) throw new InvalidParameterException();
             var txAccountList = new List<KeyValuePair<Hash, Hash>>();
-            var keyPairGenerator = new KeyPairGenerator();
             
-            int conflictTxCount = (int) (_conflictRate * _totalNumber);
-            var conflictKeyPair = keyPairGenerator.Generate();
-            var conflictAddr = new Hash(conflictKeyPair.GetAddress());
-            keyDict.Add(new Hash(conflictKeyPair.GetAddress()), conflictKeyPair);
+            int conflictTxCount = (int) (conflictRate * txCount);
+            var conflictKeyPair = keyDictIter.Next();
+            var conflictAddr = new Hash(conflictKeyPair.Key);
+
             
             for (int i = 0; i < conflictTxCount; i++)
             {
-                var senderKp = keyPairGenerator.Generate();
-                var senderAddr = new Hash(senderKp.GetAddress());
-                txAccountList.Add(new KeyValuePair<Hash, Hash>(senderAddr, conflictAddr));
-                keyDict.Add(senderAddr, senderKp);
+                var senderKp = keyDictIter.Next();
+                txAccountList.Add(new KeyValuePair<Hash, Hash>(senderKp.Key, conflictAddr));
             }
 
-            for (int i = 0; i < _totalNumber - conflictTxCount; i++)
+            for (int i = 0; i < txCount - conflictTxCount; i++)
             {
-                var senderKp = keyPairGenerator.Generate();
-                var senderAddr = new Hash(senderKp.GetAddress());
-                var receiverKp = keyPairGenerator.Generate();
-                var receiverAddr = new Hash(receiverKp.GetAddress());
-                keyDict.Add(senderAddr, senderKp);
-                keyDict.Add(receiverAddr, receiverKp);
-                txAccountList.Add(new KeyValuePair<Hash, Hash>(senderAddr, receiverAddr));
+                var senderKp = keyDictIter.Next();
+                var receiverKp = keyDictIter.Next();
+                txAccountList.Add(new KeyValuePair<Hash, Hash>(senderKp.Key, receiverKp.Key));
             }
 
             return txAccountList;
         }
         
-        
+        public List<ITransaction> GetTxsWithOneConflictGroup(Hash contractAddr, int txNumber, double conflictRate)
+        {
+            var keyDictIter = KeyDict.Iterator();
+            
+            var addrPairs = GenerateTransferAddressPair(txNumber, conflictRate, ref keyDictIter);
+            var txList = GenerateTransferTransactions(contractAddr, addrPairs);
 
-        public List<ITransaction> GenerateTransferTransactions(Hash tokenContractAddr, IEnumerable<KeyValuePair<Hash, Hash>> transferAddressPairs, Dictionary<Hash, ECKeyPair> keyDict)
+            return txList;
+        }
+
+        public List<ITransaction> GetMultipleGroupTx(int txNumber, int groupCount, Hash contractAddr)
+        {
+            if(txNumber > _totalNumber)  throw new InvalidParameterException();
+            int txNumPerGroup = txNumber / groupCount;
+            var keyDictIter = KeyDict.Iterator();
+            List<ITransaction> txList = new List<ITransaction>();
+            for (int i = 0; i < groupCount; i++)
+            {
+                var addrPair = GenerateTransferAddressPair(txNumPerGroup, 1, ref keyDictIter);
+                var groupTxList = GenerateTransferTransactions(contractAddr, addrPair);
+                txList.AddRange(groupTxList);
+            }
+
+            return txList;
+        }
+        
+        public List<ITransaction> GenerateTransferTransactions(Hash tokenContractAddr, IEnumerable<KeyValuePair<Hash, Hash>> transferAddressPairs)
         {
             var resList = new List<ITransaction>();
             foreach (var addressPair in transferAddressPairs)
             {
 
-                var keyPair = keyDict[addressPair.Key];
+                var keyPair = KeyDict[addressPair.Key];
                 Transaction tx = new Transaction()
                 {
                     From = addressPair.Key,

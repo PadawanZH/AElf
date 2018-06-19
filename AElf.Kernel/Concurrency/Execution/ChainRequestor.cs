@@ -35,7 +35,6 @@ namespace AElf.Kernel.Concurrency.Execution
 				case LocalExecuteTransactionsMessage req:
 					var reqId = GetNextRequestId();
 					
-					Console.WriteLine("received1");
 					_requestIdToTaskCompleteSource.Add(reqId, req.TaskCompletionSource);
 					_chainExecutorActorSelection.Tell(new RequestExecuteTransactions(reqId, req.Transactions));
 					break;

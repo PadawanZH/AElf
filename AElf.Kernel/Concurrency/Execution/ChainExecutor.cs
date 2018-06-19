@@ -35,7 +35,6 @@ namespace AElf.Kernel.Concurrency.Execution
             switch (message)
             {
                 case RequestExecuteTransactions req:
-                    Console.WriteLine("received2");
                     if (_state == State.Running)
                     {
                         Sender.Tell(new RespondExecuteTransactions(req.RequestId, RespondExecuteTransactions.RequestStatus.Rejected, new List<TransactionResult>()));

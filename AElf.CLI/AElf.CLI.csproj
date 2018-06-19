@@ -14,8 +14,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\AElf.Common\AElf.Common.csproj">
-      <Project>{4EC22E9F-7019-470B-B990-B9E020DBBFB2}</Project>
-      <Name>AElf.Common</Name>
     </ProjectReference>
     <ProjectReference Include="..\AElf.Cryptography\AElf.Cryptography.csproj" />
   </ItemGroup>
