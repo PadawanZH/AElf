@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using AElf.Database;
 
 namespace AElf.Kernel.Storages
@@ -14,6 +15,7 @@ namespace AElf.Kernel.Storages
 
         public async Task SetDataAsync(Hash pointerHash, byte[] data)
         {
+            Console.WriteLine(pointerHash.Value.ToBase64());
             await _keyValueDatabase.SetAsync(pointerHash.Value.ToBase64(), data);
         }
 

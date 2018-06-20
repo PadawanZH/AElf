@@ -19,9 +19,9 @@ namespace AElf.Benchmark
         {
             _totalNumber = maxNumber;
             KeyDict = new Dictionary<Hash, ECKeyPair>();
-            for (int i = 0; i < maxNumber + 100; i++)
+            for (int i = 0; i < maxNumber + 5; i++)
             {
-                if (i % (maxNumber / 100) == 0)
+                if (maxNumber > 100 && i % (maxNumber / 10) == 0)
                 {
                     Console.WriteLine((double)(i*100) / (double)maxNumber + "% pub-priv key generated");
                 }

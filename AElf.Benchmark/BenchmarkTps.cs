@@ -47,10 +47,11 @@ namespace AElf.Benchmark
 
         private TransactionDataGenerator _dataGenerater;
         private Hash _contractHash;
+        private int _maxTxNum;
         
         private ISmartContractRunnerFactory _smartContractRunnerFactory = new SmartContractRunnerFactory();
 
-        public Benchmarks(IWorldStateManager worldStateManager, IChainCreationService chainCreationService, IBlockManager blockManager, ISmartContractManager smartContractManager, IChainContextService chainContextService, IResourceUsageDetectionService resourceUsageDetectionService, IChainFunctionMetadata chainFunctionMetadata, IChainFunctionMetadataTemplate chainFunctionMetadataTemplate, IDataStore dataStore, ITransactionContext transactionContext, ISmartContractContext smartContractContext, Hash chainId = null)
+        public Benchmarks(IWorldStateManager worldStateManager, IChainCreationService chainCreationService, IBlockManager blockManager, ISmartContractManager smartContractManager, IChainContextService chainContextService, IResourceUsageDetectionService resourceUsageDetectionService, IChainFunctionMetadata chainFunctionMetadata, IChainFunctionMetadataTemplate chainFunctionMetadataTemplate, IDataStore dataStore, ITransactionContext transactionContext, ISmartContractContext smartContractContext, int maxTxNum, Hash chainId = null)
         {
             ChainId = chainId;
             _worldStateManager = worldStateManager;
@@ -64,6 +65,7 @@ namespace AElf.Benchmark
             _dataStore = dataStore;
             _transactionContext = transactionContext;
             _smartContractContext = smartContractContext;
+            _maxTxNum = maxTxNum;
 
 
             var runner = new SmartContractRunner("./bin/Debug/netcoreapp2.0/");
@@ -77,7 +79,7 @@ namespace AElf.Benchmark
                 ResourceDetectionService = _resourceUsageDetectionService
             };
             
-            _dataGenerater = new TransactionDataGenerator(4000);
+            _dataGenerater = new TransactionDataGenerator(_maxTxNum);
             byte[] code = null;
             using (FileStream file = File.OpenRead(System.IO.Path.GetFullPath("./bin/Debug/netcoreapp2.0/AElf.Benchmark.dll")))
             {
@@ -113,22 +115,15 @@ namespace AElf.Benchmark
             Stopwatch swVerifer = new Stopwatch();
             swVerifer.Start();
 
-            var tasks = new List<Task>();
-            
             foreach (var tx in txList)
             {
-                var task = Task.Run(() =>
+                ECKeyPair recipientKeyPair = ECKeyPair.FromPublicKey(tx.P.ToByteArray());
+                ECVerifier verifier = new ECVerifier(recipientKeyPair);
+                if(!verifier.Verify(tx.GetSignature(), tx.GetHash().GetHashBytes()))
                 {
-                    ECKeyPair recipientKeyPair = ECKeyPair.FromPublicKey(tx.P.ToByteArray());
-                    ECVerifier verifier = new ECVerifier(recipientKeyPair);
-                    if(!verifier.Verify(tx.GetSignature(), tx.GetHash().GetHashBytes()))
-                    {
-                        throw new Exception("Signature failed");
-                    }
-                });
-                tasks.Add(task);
+                    throw new Exception("Signature failed");
+                }
             }
-            Task.WaitAll(tasks.ToArray());
             
             swVerifer.Stop();
             
@@ -150,7 +145,7 @@ namespace AElf.Benchmark
             }).Unwrap().Result;
             
             swExec.Stop();
-
+            /*
             var dataProvider = (await _worldStateManager.OfChain(ChainId)).GetAccountDataProvider(_contractHash).GetDataProvider();
             _smartContractContext.ChainId = ChainId;
             _smartContractContext.DataProvider = dataProvider;
@@ -159,22 +154,18 @@ namespace AElf.Benchmark
             
             TestTokenContract contract = new TestTokenContract();
             await contract.InitializeAsync("token1", Hash.Zero.ToAccount());
-  
+            
             Stopwatch swNoReflaction = new Stopwatch();
             swNoReflaction.Start();
             
-            var exTaskList = new List<Task>();
             foreach (var tx in txList)
             {
-                var task = Task.Run(() => { contract.Transfer(tx.From, tx.To, 50); });
-                exTaskList.Add(task);
+                var parameters = AElf.Kernel.Parameters.Parser.ParseFrom(tx.Params).Params.Select(p => p.Value()).ToArray();
+                await contract.Transfer(tx.From, (Hash)parameters[1], 50);
             }
-
-            Task.WaitAll(exTaskList.ToArray());
-            
             
             swNoReflaction.Stop();
-            
+            */
             Dictionary<string, double> res = new Dictionary<string, double>();
 
             var verifyPerSec = txNumber / (swVerifer.ElapsedMilliseconds / 1000.0);
@@ -182,12 +173,6 @@ namespace AElf.Benchmark
 
             var executeTPS = txNumber / (swExec.ElapsedMilliseconds / 1000.0);
             res.Add("executeTPS", executeTPS);
-
-            var executeTPSNoReflection = txNumber / (swNoReflaction.ElapsedMilliseconds / 1000.0);
-            res.Add("executeTPSNoReflection", executeTPSNoReflection);
-            
-            
-            
             return res;
         }
 
@@ -210,7 +195,7 @@ namespace AElf.Benchmark
             {
                 var txList = _dataGenerater.GetMultipleGroupTx(txNumber, groupCount, _contractHash);
                 long timeused = 0;
-                for (int i = 0; i < 20; i++)
+                for (int i = 0; i < 10; i++)
                 {
                     Stopwatch swExec = new Stopwatch();
                     swExec.Start();
@@ -226,7 +211,7 @@ namespace AElf.Benchmark
                 
                 
 
-                var time = txNumber / (timeused / 1000.0 / 20.0);
+                var time = txNumber / (timeused / 1000.0 / 10.0);
                 var str = groupCount + " groups with " + txList.Count + " tx in total";
                 res.Add(str, time);
                 Console.WriteLine(str + ": " + time);
@@ -340,7 +325,7 @@ namespace AElf.Benchmark
             foreach (var addr in addrBook)
             {
                 current++;
-                if (current % (addrBook.Count() / 100) == 0)
+                if (addrBook.Count() > 100 && current % (addrBook.Count() / 10) == 0)
                 {
                     Console.WriteLine("Contract Init: " + (double)(current * 100) / (double)addrBook.Count() + "%");
                 }

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using AElf.Database;
 using AElf.Database.Config;
 using AElf.Kernel;
@@ -20,8 +21,10 @@ namespace AElf.Benchmark
             builder.RegisterModule(new MetadataModule(chainId));
             var dataConfig = new DatabaseConfig();
             dataConfig.Type = DatabaseType.Ssdb;
-            builder.RegisterModule(new DatabaseModule(dataConfig));
-            builder.RegisterType<Benchmarks>().WithParameter("chainId", chainId);
+            dataConfig.Host = "192.168.197.28";
+            dataConfig.Port = 8888;
+            builder.RegisterModule(new DatabaseModule(new DatabaseConfig()));
+            builder.RegisterType<Benchmarks>().WithParameter("chainId", chainId).WithParameter("maxTxNum", 2);
             var container = builder.Build();
             
             if (container == null)
@@ -40,13 +43,14 @@ namespace AElf.Benchmark
             {
                 var benchmarkTps = scope.Resolve<Benchmarks>();
 
-                var baseline = benchmarkTps.SingleGroupBenchmark(3000, 1).Result;
+                
+                /*
+                 var baseline = benchmarkTps.SingleGroupBenchmark(2000, 1).Result;
                 Console.WriteLine("Base line");
                 foreach (var kv in baseline)
                 {
                     Console.WriteLine(kv.Key + ": " + kv.Value);
                 }
-                /*
                 var baseline = benchmarkTps.SingleGroupBenchmark(3000, 1).Result;
                 Console.WriteLine("Base line");
                 foreach (var kv in baseline)
@@ -70,7 +74,7 @@ namespace AElf.Benchmark
                     }
                 }
                 */
-                var multiGroupRes = benchmarkTps.MultipleGroupBenchmark(2000, 8);
+                var multiGroupRes = benchmarkTps.MultipleGroupBenchmark(1, 1);
             }
         }
         

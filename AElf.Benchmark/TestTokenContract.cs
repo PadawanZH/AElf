@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -48,11 +49,11 @@ namespace AElf.Benchmark
         
         public async Task<bool> InitBalance(Hash addr, Hash owner)
         {
-            //Console.WriteLine("InitBalance " + addr + " " + owner);
+            Console.WriteLine("InitBalance " + addr + " " + owner);
             if (owner == Owner)
             {
                 var balance = new UInt64Value();
-                balance.Value = 10000;
+                balance.Value = 50000;
                 await Balances.SetValueAsync(addr, balance.ToByteArray());
 
                 return true;
@@ -83,10 +84,14 @@ namespace AElf.Benchmark
                     Value = newToBal
                 }.ToByteArray());
                 
+                File.WriteAllLines("/Users/andrew/log.temp", new []{"Transfer from: " + from.Value.ToBase64() + " (" + newFromBal +") to: " 
+                                                                    + to.Value.ToBase64() + "(" + newToBal + ")"});
+                
                 return true;
             }
             else
             {
+                File.WriteAllLines("/Users/andrew/log.temp", new []{"Something wrong"});
                 return false;
             }
         }
