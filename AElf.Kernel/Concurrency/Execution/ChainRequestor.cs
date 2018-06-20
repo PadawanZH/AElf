@@ -56,6 +56,5 @@ namespace AElf.Kernel.Concurrency.Execution
 		{
 			return Akka.Actor.Props.Create(() => new ChainRequestor(system, chainId));
 		}
-
 	}
 }

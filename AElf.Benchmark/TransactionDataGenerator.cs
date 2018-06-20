@@ -1,4 +1,5 @@
 ﻿
+using System;
 using System.Collections.Generic;
 using AElf.Cryptography.ECDSA;
 using AElf.Kernel;
@@ -20,6 +21,10 @@ namespace AElf.Benchmark
             KeyDict = new Dictionary<Hash, ECKeyPair>();
             for (int i = 0; i < maxNumber + 100; i++)
             {
+                if (i % (maxNumber / 100) == 0)
+                {
+                    Console.WriteLine((double)(i*100) / (double)maxNumber + "% pub-priv key generated");
+                }
                 var keyPairGenerator = new KeyPairGenerator();
                 var kpair = keyPairGenerator.Generate();
                 KeyDict.Add(new Hash(kpair.GetAddress()), kpair);

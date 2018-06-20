@@ -30,6 +30,9 @@ namespace AElf.Kernel.Modules.AutofacModule
 #endif
                     builder.RegisterType<SsdbDatabase>().As<IKeyValueDatabase>();
                     break;
+                case DatabaseType.Redis:
+                    builder.RegisterType<RedisDatabase>().As<IKeyValueDatabase>();
+                    break;
             }
         }
     }

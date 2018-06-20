@@ -18,7 +18,9 @@ namespace AElf.Benchmark
             var builder = new ContainerBuilder();
             builder.RegisterModule(new MainModule());
             builder.RegisterModule(new MetadataModule(chainId));
-            builder.RegisterModule(new DatabaseModule(new DatabaseConfig()));
+            var dataConfig = new DatabaseConfig();
+            dataConfig.Type = DatabaseType.Ssdb;
+            builder.RegisterModule(new DatabaseModule(dataConfig));
             builder.RegisterType<Benchmarks>().WithParameter("chainId", chainId);
             var container = builder.Build();
             
@@ -39,8 +41,18 @@ namespace AElf.Benchmark
                 var benchmarkTps = scope.Resolve<Benchmarks>();
 
                 var baseline = benchmarkTps.SingleGroupBenchmark(3000, 1).Result;
-
+                Console.WriteLine("Base line");
+                foreach (var kv in baseline)
+                {
+                    Console.WriteLine(kv.Key + ": " + kv.Value);
+                }
                 /*
+                var baseline = benchmarkTps.SingleGroupBenchmark(3000, 1).Result;
+                Console.WriteLine("Base line");
+                foreach (var kv in baseline)
+                {
+                    Console.WriteLine(kv.Key + ": " + kv.Value);
+                }
                 Console.WriteLine("Base line");
                 foreach (var kv in baseline)
                 {
@@ -58,11 +70,7 @@ namespace AElf.Benchmark
                     }
                 }
                 */
-                var multiGroupRes = benchmarkTps.MultipleGroupBenchmark(4000, 10);
-                foreach (var kv in multiGroupRes)
-                {
-                    Console.WriteLine(kv.Key + ": " + kv.Value);
-                }
+                var multiGroupRes = benchmarkTps.MultipleGroupBenchmark(2000, 8);
             }
         }
         

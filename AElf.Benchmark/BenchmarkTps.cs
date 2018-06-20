@@ -77,7 +77,7 @@ namespace AElf.Benchmark
                 ResourceDetectionService = _resourceUsageDetectionService
             };
             
-            _dataGenerater = new TransactionDataGenerator(10000);
+            _dataGenerater = new TransactionDataGenerator(4000);
             byte[] code = null;
             using (FileStream file = File.OpenRead(System.IO.Path.GetFullPath("./bin/Debug/netcoreapp2.0/AElf.Benchmark.dll")))
             {
@@ -209,19 +209,27 @@ namespace AElf.Benchmark
             for (int groupCount = 1; groupCount <= maxGroupNumber; groupCount++)
             {
                 var txList = _dataGenerater.GetMultipleGroupTx(txNumber, groupCount, _contractHash);
-                Stopwatch swExec = new Stopwatch();
-                swExec.Start();
-
-                var txResult = Task.Factory.StartNew(async () =>
+                long timeused = 0;
+                for (int i = 0; i < 20; i++)
                 {
-                    return await executingService.ExecuteAsync(txList, ChainId);
-                }).Unwrap().Result;
-            
-                swExec.Stop();
+                    Stopwatch swExec = new Stopwatch();
+                    swExec.Start();
 
-                var time = txNumber / (swExec.ElapsedMilliseconds / 1000.0);
+                    var txResult = Task.Factory.StartNew(async () =>
+                    {
+                        return await executingService.ExecuteAsync(txList, ChainId);
+                    }).Unwrap().Result;
+            
+                    swExec.Stop();
+                    timeused += swExec.ElapsedMilliseconds;
+                }
+                
+                
+
+                var time = txNumber / (timeused / 1000.0 / 20.0);
                 var str = groupCount + " groups with " + txList.Count + " tx in total";
                 res.Add(str, time);
+                Console.WriteLine(str + ": " + time);
             }
 
             return res;
@@ -246,7 +254,6 @@ namespace AElf.Benchmark
             var chain = await _chainCreationService.CreateNewChainAsync(ChainId, reg);
             var genesis = await _blockManager.GetBlockAsync(chain.GenesisBlockHash);
             var contractAddressZero = new Hash(ChainId.CalculateHashWith("__SmartContractZero__")).ToAccount();
-            
             
             
             //deploy token contract
@@ -329,43 +336,42 @@ namespace AElf.Benchmark
             await executiveUser.SetTransactionContext(txnInitCtxt).Apply();
             
             //init contract
-            var tasks = new List<Task>();
+            int current = 0;
             foreach (var addr in addrBook)
             {
-                var task = Task.Run(async () =>
+                current++;
+                if (current % (addrBook.Count() / 100) == 0)
                 {
-                    var txnBalInit = new Transaction
+                    Console.WriteLine("Contract Init: " + (double)(current * 100) / (double)addrBook.Count() + "%");
+                }
+                var txnBalInit = new Transaction
+                {
+                    From = Hash.Zero.ToAccount(),
+                    To = contractAddr,
+                    IncrementId = NewIncrementId(),
+                    MethodName = "InitBalance",
+                    Params = ByteString.CopyFrom(new AElf.Kernel.Parameters()
                     {
-                        From = Hash.Zero.ToAccount(),
-                        To = contractAddr,
-                        IncrementId = NewIncrementId(),
-                        MethodName = "InitBalance",
-                        Params = ByteString.CopyFrom(new AElf.Kernel.Parameters()
-                        {
-                            Params = {
-                                new Param
-                                {
-                                    HashVal = addr
-                                },
-                                new Param
-                                {
-                                    HashVal = Hash.Zero.ToAccount()
-                                }
+                        Params = {
+                            new Param
+                            {
+                                HashVal = addr
+                            },
+                            new Param
+                            {
+                                HashVal = Hash.Zero.ToAccount()
                             }
-                        }.ToByteArray())
-                    };
+                        }
+                    }.ToByteArray())
+                };
             
-                    var txnBalInitCtx = new TransactionContext()
-                    {
-                        Transaction = txnBalInit
-                    };
-                    var executiveBalInitUser = await _smartContractService.GetExecutiveAsync(contractAddr, ChainId);
-                    await executiveBalInitUser.SetTransactionContext(txnBalInitCtx).Apply();
-                });
-                tasks.Add(task);
+                var txnBalInitCtx = new TransactionContext()
+                {
+                    Transaction = txnBalInit
+                };
+                var executiveBalInitUser = await _smartContractService.GetExecutiveAsync(contractAddr, ChainId);
+                await executiveBalInitUser.SetTransactionContext(txnBalInitCtx).Apply();
             }
-
-            Task.WaitAll(tasks.ToArray());
         }
 
         public double BenchmarkGrouping(int txNumber, double conflictRate, List<ITransaction> txList)
