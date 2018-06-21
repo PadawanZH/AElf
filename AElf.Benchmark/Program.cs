@@ -74,7 +74,7 @@ namespace AElf.Benchmark
                     }
                 }
                 */
-                var multiGroupRes = benchmarkTps.MultipleGroupBenchmark(1, 1);
+                var multiGroupRes = benchmarkTps.MultipleGroupBenchmark(1, 1).Result;
             }
         }
         

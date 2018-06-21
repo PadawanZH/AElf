@@ -176,7 +176,7 @@ namespace AElf.Benchmark
             return res;
         }
 
-        public Dictionary<string, double> MultipleGroupBenchmark(int txNumber, int maxGroupNumber)
+        public async Task<Dictionary<string, double>> MultipleGroupBenchmark(int txNumber, int maxGroupNumber)
         {
             var res = new Dictionary<string, double>();
             //prepare data
@@ -185,9 +185,9 @@ namespace AElf.Benchmark
             Console.WriteLine("-------------------------------------");
 
             var sysActor = ActorSystem.Create("benchmark");
-            var _serviceRouter = sysActor.ActorOf(LocalServicesProvider.Props(_servicePack));
-            var _generalExecutor = sysActor.ActorOf(GeneralExecutor.Props(sysActor, _serviceRouter), "exec");
-            _generalExecutor.Tell(new RequestAddChainExecutor(ChainId));
+            var serviceRouter = sysActor.ActorOf(LocalServicesProvider.Props(_servicePack));
+            var generalExecutor = sysActor.ActorOf(GeneralExecutor.Props(sysActor, serviceRouter), "exec");
+            generalExecutor.Tell(new RequestAddChainExecutor(ChainId), generalExecutor);
             
             var executingService = new ParallelTransactionExecutingService(sysActor);
             
@@ -209,8 +209,6 @@ namespace AElf.Benchmark
                     timeused += swExec.ElapsedMilliseconds;
                 }
                 
-                
-
                 var time = txNumber / (timeused / 1000.0 / 10.0);
                 var str = groupCount + " groups with " + txList.Count + " tx in total";
                 res.Add(str, time);
